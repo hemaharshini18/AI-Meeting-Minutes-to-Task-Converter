@@ -29,12 +29,14 @@ export const insertTaskSchema = createInsertSchema(tasks).pick({
   name: true,
   description: true,
   assignee: true,
-  dueDate: true,
   priority: true,
   status: true,
   originalInput: true,
 }).extend({
-  dueDate: z.coerce.date().optional().nullable(),
+  dueDate: z.union([z.string(), z.date()]).optional().transform(val => {
+    if (!val) return null;
+    return typeof val === 'string' ? new Date(val) : val;
+  }).nullable(),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
