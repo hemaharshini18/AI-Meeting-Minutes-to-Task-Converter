@@ -58,6 +58,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update task
+  app.put("/api/tasks/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = req.body;
+      
+      const updatedTask = await storage.updateTask(id, updates);
+      if (!updatedTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      res.json(updatedTask);
+    } catch (error: any) {
+      res.status(400).json({ 
+        message: "Failed to update task", 
+        errors: error.errors || [error.message] 
+      });
+    }
+  });
+
+  // Delete task
+  app.delete("/api/tasks/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteTask(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete task" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
