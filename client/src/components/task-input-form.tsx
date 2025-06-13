@@ -20,13 +20,23 @@ export default function TaskInputForm({ onParsedTask, onTaskCreated }: TaskInput
 
   const parseTaskMutation = useMutation({
     mutationFn: async (taskInput: string) => {
-      const response = await apiRequest("POST", "/api/tasks/parse", { input: taskInput });
-      return response.json();
+      console.log("Parsing task:", taskInput);
+      try {
+        const response = await apiRequest("POST", "/api/tasks/parse", { input: taskInput });
+        const data = await response.json();
+        console.log("Parse response:", data);
+        return data;
+      } catch (error) {
+        console.error("Parse error:", error);
+        throw error;
+      }
     },
     onSuccess: (parsed: ParsedTask) => {
+      console.log("Parse success:", parsed);
       onParsedTask(parsed);
     },
     onError: (error: any) => {
+      console.error("Parse mutation error:", error);
       toast({
         title: "Parsing Failed",
         description: error.message || "Failed to parse task input",
@@ -38,19 +48,34 @@ export default function TaskInputForm({ onParsedTask, onTaskCreated }: TaskInput
 
   const createTaskMutation = useMutation({
     mutationFn: async (taskData: any) => {
-      const response = await apiRequest("POST", "/api/tasks", taskData);
-      return response.json();
+      console.log("Creating task:", taskData);
+      try {
+        const response = await apiRequest("POST", "/api/tasks", taskData);
+        const data = await response.json();
+        console.log("Create response:", data);
+        return data;
+      } catch (error) {
+        console.error("Create error:", error);
+        throw error;
+      }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log("Create success:", data);
       toast({
         title: "Task Created",
         description: "Your task has been successfully created!",
       });
       setInput("");
       onParsedTask(null);
-      onTaskCreated?.();
+      
+      // Ensure we trigger a refresh of the task list
+      setTimeout(() => {
+        console.log("Triggering task refresh");
+        onTaskCreated?.();
+      }, 500);
     },
     onError: (error: any) => {
+      console.error("Create mutation error:", error);
       toast({
         title: "Creation Failed",
         description: error.message || "Failed to create task",
@@ -86,9 +111,11 @@ export default function TaskInputForm({ onParsedTask, onTaskCreated }: TaskInput
     }
 
     try {
+      console.log("Smart add initiated for:", input);
       // First parse the task
       const response = await apiRequest("POST", "/api/tasks/parse", { input: input.trim() });
       const parsed: ParsedTask = await response.json();
+      console.log("Parsed task for creation:", parsed);
 
       if (!parsed.isValid) {
         toast({
@@ -111,6 +138,7 @@ export default function TaskInputForm({ onParsedTask, onTaskCreated }: TaskInput
 
       createTaskMutation.mutate(taskData);
     } catch (error: any) {
+      console.error("Smart add error:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to process task",

@@ -54,18 +54,33 @@ export class MemStorage implements IStorage {
 
   async createTask(insertTask: InsertTask): Promise<Task> {
     const id = this.currentTaskId++;
+    
+    // Handle date conversion properly
+    let dueDate = null;
+    if (insertTask.dueDate) {
+      try {
+        dueDate = insertTask.dueDate instanceof Date 
+          ? insertTask.dueDate 
+          : new Date(insertTask.dueDate);
+      } catch (error) {
+        console.error("Error parsing date:", error);
+        dueDate = null;
+      }
+    }
+    
     const task: Task = {
       id,
       name: insertTask.name,
       description: insertTask.description ?? null,
       assignee: insertTask.assignee ?? null,
-      dueDate: insertTask.dueDate ?? null,
+      dueDate: dueDate,
       priority: insertTask.priority ?? "P3",
       status: insertTask.status ?? "pending",
       originalInput: insertTask.originalInput ?? null,
       createdAt: new Date(),
     };
     this.tasks.set(id, task);
+    console.log("Task created in storage:", task);
     return task;
   }
 

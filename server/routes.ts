@@ -9,10 +9,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Parse natural language task input
   app.post("/api/tasks/parse", async (req, res) => {
     try {
+      console.log("Received parse request:", req.body);
+      
+      // Validate the input
       const { input } = parseTaskSchema.parse(req.body);
+      if (!input || typeof input !== 'string') {
+        return res.status(400).json({ 
+          message: "Invalid input format", 
+          errors: ["Input must be a non-empty string"] 
+        });
+      }
+      
+      // Parse the task
       const parsed = parseNaturalLanguageTask(input);
+      console.log("Parsed task:", parsed);
+      
       res.json(parsed);
     } catch (error: any) {
+      console.error("Error parsing task:", error);
       res.status(400).json({ 
         message: "Invalid request", 
         errors: error.errors || [error.message] 
@@ -23,10 +37,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create a new task
   app.post("/api/tasks", async (req, res) => {
     try {
+      console.log("Received create task request:", req.body);
+      
+      // Validate the task data
       const taskData = insertTaskSchema.parse(req.body);
+      
+      // Create the task
       const task = await storage.createTask(taskData);
+      console.log("Created task:", task);
+      
       res.status(201).json(task);
     } catch (error: any) {
+      console.error("Error creating task:", error);
       res.status(400).json({ 
         message: "Invalid task data", 
         errors: error.errors || [error.message] 
@@ -38,8 +60,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/tasks", async (req, res) => {
     try {
       const tasks = await storage.getAllTasks();
+      console.log("GET /api/tasks - Returning tasks:", tasks);
       res.json(tasks);
     } catch (error: any) {
+      console.error("Error fetching tasks:", error);
       res.status(500).json({ message: "Failed to fetch tasks" });
     }
   });
@@ -88,6 +112,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ message: "Failed to delete task" });
+    }
+  });
+
+  // Debug endpoint to check storage state
+  app.get("/api/debug/storage", async (req, res) => {
+    try {
+      const tasks = await storage.getAllTasks();
+      res.json({
+        tasksCount: tasks.length,
+        tasks: tasks
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch storage state", error: String(error) });
     }
   });
 
@@ -163,11 +200,76 @@ function parseNaturalLanguageTask(input: string): ParsedTask {
   }
 
   // Extract potential assignee names (capitalized words)
-  const nameMatches = workingText.match(/\b[A-Z][a-z]+\b/g);
-  if (nameMatches && nameMatches.length > 0) {
-    // Take the first capitalized word as potential assignee
-    result.assignee = nameMatches[0];
-    workingText = workingText.replace(new RegExp(`\\b${result.assignee}\\b`), '').trim();
+  console.log("Extracting assignee from:", workingText);
+  
+  // Special handling for common task verbs that might be capitalized
+  const commonVerbs = ["finish", "complete", "review", "create", "update", "send", "call", "deploy", "check", "write"];
+  let verbMatch = null;
+  
+  for (const verb of commonVerbs) {
+    const verbRegex = new RegExp(`\\b${verb}\\b`, 'i');
+    if (workingText.match(verbRegex)) {
+      verbMatch = workingText.match(verbRegex)?.[0];
+      break;
+    }
+  }
+  
+  // List of known companies/organizations that should not be treated as assignees
+  const knownCompanies = [
+    "microsoft", "google", "apple", "amazon", "facebook", "meta", "netflix", "tesla", 
+    "ibm", "oracle", "salesforce", "adobe", "intel", "cisco", "samsung", "sony"
+  ];
+  
+  // Look for specific assignee markers
+  const byMarkerMatch = workingText.match(/\b(by|for|to)\s+([A-Za-z]+)\b/i);
+  if (byMarkerMatch && byMarkerMatch[2]) {
+    const potentialAssignee = byMarkerMatch[2];
+    
+    // Check if it's a company name
+    if (!knownCompanies.includes(potentialAssignee.toLowerCase())) {
+      // Found a name after "by", "for", or "to" that's not a company
+      result.assignee = potentialAssignee.charAt(0).toUpperCase() + potentialAssignee.slice(1).toLowerCase();
+      workingText = workingText.replace(byMarkerMatch[0], '').trim();
+      console.log("Found assignee via marker:", result.assignee);
+    } else {
+      console.log("Found company name, not treating as assignee:", potentialAssignee);
+    }
+  } else {
+    // Try to find capitalized names, but exclude common verbs and companies
+    const nameMatches = workingText.match(/\b[A-Z][a-z]+\b/g);
+    if (nameMatches && nameMatches.length > 0) {
+      // Filter out common verbs and companies from potential names
+      const filteredNames = nameMatches.filter(name => 
+        !commonVerbs.includes(name.toLowerCase()) && 
+        !knownCompanies.includes(name.toLowerCase())
+      );
+      
+      if (filteredNames.length > 0) {
+        result.assignee = filteredNames[0];
+        workingText = workingText.replace(new RegExp(`\\b${result.assignee}\\b`), '').trim();
+        console.log("Found assignee via capitalization:", result.assignee);
+      }
+    }
+    
+    // If no assignee found yet, try common names
+    if (!result.assignee) {
+      const commonNames = ["aman", "sarah", "john", "alex", "david", "michael", "emma", "olivia", "rajeev", "finish"];
+      for (const name of commonNames) {
+        if (name.toLowerCase() === "finish" && verbMatch && verbMatch.toLowerCase() === "finish") {
+          continue; // Skip "finish" if it's likely a verb
+        }
+        
+        const nameRegex = new RegExp(`\\b${name}\\b`, 'i');
+        const match = workingText.match(nameRegex);
+        if (match) {
+          // Capitalize the first letter for consistency
+          result.assignee = match[0].charAt(0).toUpperCase() + match[0].slice(1).toLowerCase();
+          workingText = workingText.replace(nameRegex, '').trim();
+          console.log("Found assignee via common names:", result.assignee);
+          break;
+        }
+      }
+    }
   }
 
   // Extract task name (remaining text, cleaned up)

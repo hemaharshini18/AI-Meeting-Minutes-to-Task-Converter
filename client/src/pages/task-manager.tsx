@@ -1,19 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import TaskInputForm from "@/components/task-input-form";
 import ParsingPreview from "@/components/parsing-preview";
 import TaskBoard from "@/components/task-board";
 import type { ParsedTask } from "@/lib/natural-language-parser";
-import { CalendarDays, Plus, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CalendarDays } from "lucide-react";
+import UnifiedTaskEntry from "@/components/unified-task-entry";
 
 export default function TaskManager() {
+  console.log("TaskManager component rendering");
   const [parsedTask, setParsedTask] = useState<ParsedTask | null>(null);
-  const [showTaskForm, setShowTaskForm] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showMeetingParser, setShowMeetingParser] = useState(false);
+
+  useEffect(() => {
+    console.log("TaskManager component mounted");
+  }, []);
 
   const handleTaskCreated = () => {
+    console.log("Task created callback triggered");
     setRefreshKey(prev => prev + 1);
-    setShowTaskForm(false);
     setParsedTask(null);
   };
 
@@ -29,58 +34,23 @@ export default function TaskManager() {
               </div>
               <span className="text-xl font-semibold text-gray-900">TaskFlow</span>
             </div>
-            <div className="flex items-center space-x-4">
-              <Button
-                onClick={() => setShowTaskForm(!showTaskForm)}
-                className="bg-primary hover:bg-primary/90"
-              >
-                {showTaskForm ? (
-                  <>
-                    <X className="h-4 w-4 mr-2" />
-                    Close Form
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Task
-                  </>
-                )}
-              </Button>
-              <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
-            </div>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Task Input Form - Collapsible */}
-        {showTaskForm && (
-          <div className="mb-8 animate-in slide-in-from-top-4 duration-300">
-            <div className="text-center mb-8">
-              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-                Smart Task Entry
-              </h1>
-              <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-                Enter tasks naturally and let our AI parse the details. Just type what you need to do, when, and who should handle it.
-              </p>
-            </div>
-
-            <TaskInputForm 
-              onParsedTask={setParsedTask}
-              onTaskCreated={handleTaskCreated}
-            />
-
-            {/* Real-time Parsing Preview */}
-            <div className="mt-8">
-              <ParsingPreview parsedTask={parsedTask} />
-            </div>
-          </div>
-        )}
+        {/* Unified Task Entry */}
+        <UnifiedTaskEntry 
+          onTaskAdded={() => setRefreshKey(k => k + 1)}
+          onTasksAdded={() => setRefreshKey(k => k + 1)}
+        />
 
         {/* Task Board */}
         <TaskBoard 
           key={refreshKey}
-          onTaskUpdated={() => setRefreshKey(prev => prev + 1)} 
+          onTaskUpdated={() => setRefreshKey(prev => prev + 1)}
+          showMeetingParser={showMeetingParser}
+          setShowMeetingParser={setShowMeetingParser}
         />
       </main>
 

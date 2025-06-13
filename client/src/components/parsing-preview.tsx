@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle, User, Calendar, Flag, Clock, AlertTriangle, AlertCircle, Brain } from "lucide-react";
 import type { ParsedTask } from "@/lib/natural-language-parser";
 import { getPriorityInfo, formatDateForDisplay } from "@/lib/natural-language-parser";
+import { ensureDate } from "@shared/schema";
 
 interface ParsingPreviewProps {
   parsedTask: ParsedTask | null;
@@ -25,7 +26,19 @@ export default function ParsingPreview({ parsedTask }: ParsingPreviewProps) {
   }
 
   const priorityInfo = getPriorityInfo(parsedTask.priority);
-  const dateInfo = formatDateForDisplay(parsedTask.dueDate);
+  
+  // Safely handle the date
+  let dateInfo = { date: '', time: '', relative: '' };
+  if (parsedTask.dueDate) {
+    try {
+      const safeDate = ensureDate(parsedTask.dueDate);
+      if (safeDate) {
+        dateInfo = formatDateForDisplay(safeDate);
+      }
+    } catch (error) {
+      console.error("Error formatting date:", error, parsedTask.dueDate);
+    }
+  }
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">

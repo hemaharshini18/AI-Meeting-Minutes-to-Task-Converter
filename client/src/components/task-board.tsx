@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,11 +19,15 @@ import {
   Filter,
   SortAsc,
   Grid3X3,
-  List
+  List,
+  RefreshCw,
+  MessageSquare
 } from "lucide-react";
 import { formatDateForDisplay, getPriorityInfo } from "@/lib/natural-language-parser";
 import type { Task } from "@shared/schema";
+import { ensureDate } from "@shared/schema";
 import TaskEditModal from "./task-edit-modal";
+import MeetingMinutesParser from "./meeting-minutes-parser";
 
 type ViewMode = "grid" | "list";
 type SortField = "dueDate" | "priority" | "name" | "assignee";
@@ -31,22 +35,41 @@ type FilterPriority = "all" | "P1" | "P2" | "P3" | "P4";
 
 interface TaskBoardProps {
   onTaskUpdated?: () => void;
+  showMeetingParser: boolean;
+  setShowMeetingParser: (show: boolean) => void;
 }
 
-export default function TaskBoard({ onTaskUpdated }: TaskBoardProps) {
+export default function TaskBoard({ onTaskUpdated, showMeetingParser, setShowMeetingParser }: TaskBoardProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [sortField, setSortField] = useState<SortField>("dueDate");
   const [filterPriority, setFilterPriority] = useState<FilterPriority>("all");
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const { data: tasks = [], isLoading, refetch } = useQuery({
-    queryKey: ["/api/tasks"],
+    queryKey: ["/api/tasks", refreshKey],
     queryFn: async () => {
-      const response = await fetch("/api/tasks");
-      if (!response.ok) throw new Error("Failed to fetch tasks");
-      return response.json();
-    }
+      console.log("Fetching tasks...");
+      try {
+        const response = await fetch("/api/tasks");
+        if (!response.ok) throw new Error("Failed to fetch tasks");
+        const data = await response.json();
+        console.log("Fetched tasks:", data);
+        return data;
+      } catch (error) {
+        console.error("Error fetching tasks:", error);
+        throw error;
+      }
+    },
+    refetchOnWindowFocus: true,
+    staleTime: 0 // Always refetch when the query is used again
   });
+
+  // Add useEffect to refresh tasks when component mounts or refreshKey changes
+  useEffect(() => {
+    console.log("TaskBoard useEffect triggered, refreshKey:", refreshKey);
+    refetch();
+  }, [refreshKey, refetch]);
 
   // Filter and sort tasks
   const filteredAndSortedTasks = tasks
@@ -126,6 +149,20 @@ export default function TaskBoard({ onTaskUpdated }: TaskBoardProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Manual refresh button */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => {
+              console.log("Manual refresh triggered");
+              refetch();
+            }}
+            className="mr-2"
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+
           {/* Filter by priority */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -206,6 +243,11 @@ export default function TaskBoard({ onTaskUpdated }: TaskBoardProps) {
         </div>
       </div>
 
+      {/* Meeting minutes parser */}
+      {showMeetingParser && (
+        <MeetingMinutesParser onTasksAdded={() => setRefreshKey(k => k + 1)} />
+      )}
+
       {/* Tasks display */}
       {filteredAndSortedTasks.length === 0 ? (
         <Card className="border-dashed border-2 border-gray-300">
@@ -262,9 +304,30 @@ interface TaskCardProps {
 
 function TaskCard({ task, viewMode, onEdit, onDelete }: TaskCardProps) {
   const priorityInfo = getPriorityInfo(task.priority);
-  const dateInfo = formatDateForDisplay(task.dueDate ? new Date(task.dueDate) : undefined);
+  
+  // Safely handle the date
+  let dateInfo = { date: '', time: '', relative: '' };
+  if (task.dueDate) {
+    try {
+      const safeDate = ensureDate(task.dueDate);
+      if (safeDate) {
+        dateInfo = formatDateForDisplay(safeDate);
+      }
+    } catch (error) {
+      console.error("Error formatting date:", error, task.dueDate);
+    }
+  }
 
-  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date();
+  // Safely check if the task is overdue
+  let isOverdue = false;
+  if (task.dueDate) {
+    try {
+      const dueDate = ensureDate(task.dueDate);
+      isOverdue = !!dueDate && dueDate < new Date();
+    } catch (error) {
+      console.error("Error checking overdue status:", error, task.dueDate);
+    }
+  }
 
   if (viewMode === "list") {
     return (

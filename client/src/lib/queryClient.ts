@@ -2,8 +2,14 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    let errorText;
+    try {
+      const errorData = await res.json();
+      errorText = errorData.message || errorData.error || res.statusText;
+    } catch {
+      errorText = await res.text() || res.statusText;
+    }
+    throw new Error(`${res.status}: ${errorText}`);
   }
 }
 
@@ -12,15 +18,34 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(url, {
-    method,
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
-  });
+  try {
+    console.log(`${method} request to ${url}`, data);
+    const res = await fetch(url, {
+      method,
+      headers: data ? { "Content-Type": "application/json" } : {},
+      body: data ? JSON.stringify(data) : undefined,
+      credentials: "include",
+    });
 
-  await throwIfResNotOk(res);
-  return res;
+    console.log(`Response status: ${res.status}`);
+    
+    // Only check if response is ok, but don't consume the body
+    if (!res.ok) {
+      let errorText;
+      try {
+        const errorData = await res.json();
+        errorText = errorData.message || errorData.error || res.statusText;
+      } catch {
+        errorText = await res.text() || res.statusText;
+      }
+      throw new Error(`${res.status}: ${errorText}`);
+    }
+    
+    return res;
+  } catch (error) {
+    console.error("API request error:", error);
+    throw error;
+  }
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";

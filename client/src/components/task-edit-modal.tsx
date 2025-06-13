@@ -46,10 +46,11 @@ import {
   X,
   Loader2
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, parse } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getPriorityInfo } from "@/lib/natural-language-parser";
 import type { Task } from "@shared/schema";
+import { ensureDate } from "@shared/schema";
 
 const editTaskSchema = z.object({
   name: z.string().min(1, "Task name is required"),
@@ -71,9 +72,9 @@ interface TaskEditModalProps {
 }
 
 export default function TaskEditModal({ task, isOpen, onClose, onSave }: TaskEditModalProps) {
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(
-    task.dueDate ? new Date(task.dueDate) : undefined
-  );
+  // Safely handle the date
+  const safeDate = task.dueDate ? ensureDate(task.dueDate) : undefined;
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(safeDate);
   const { toast } = useToast();
 
   const form = useForm<EditTaskFormData>({
@@ -82,8 +83,8 @@ export default function TaskEditModal({ task, isOpen, onClose, onSave }: TaskEdi
       name: task.name,
       description: task.description || "",
       assignee: task.assignee || "",
-      dueDate: task.dueDate ? new Date(task.dueDate) : undefined,
-      dueTime: task.dueDate ? format(new Date(task.dueDate), "HH:mm") : "",
+      dueDate: safeDate,
+      dueTime: safeDate ? format(safeDate, "HH:mm") : "",
       priority: task.priority as "P1" | "P2" | "P3" | "P4",
       status: task.status as "pending" | "in-progress" | "completed" | "cancelled",
     },
@@ -153,16 +154,20 @@ export default function TaskEditModal({ task, isOpen, onClose, onSave }: TaskEdi
   // Reset form when task changes
   useEffect(() => {
     if (task) {
+      // Safely handle the date
+      const safeDate = task.dueDate ? ensureDate(task.dueDate) : undefined;
+      
       form.reset({
         name: task.name,
         description: task.description || "",
         assignee: task.assignee || "",
-        dueDate: task.dueDate ? new Date(task.dueDate) : undefined,
-        dueTime: task.dueDate ? format(new Date(task.dueDate), "HH:mm") : "",
+        dueDate: safeDate,
+        dueTime: safeDate ? format(safeDate, "HH:mm") : "",
         priority: task.priority as "P1" | "P2" | "P3" | "P4",
         status: task.status as "pending" | "in-progress" | "completed" | "cancelled",
       });
-      setSelectedDate(task.dueDate ? new Date(task.dueDate) : undefined);
+      
+      setSelectedDate(safeDate);
     }
   }, [task, form]);
 

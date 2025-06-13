@@ -52,6 +52,10 @@ export function parseNaturalLanguageTask(input: string): ParsedTask {
   const datePatterns = [
     { pattern: /\btomorrow\b/i, handler: () => addDays(new Date(), 1) },
     { pattern: /\btoday\b/i, handler: () => new Date() },
+    { pattern: /\btonight\b/i, handler: () => new Date() },
+    { pattern: /\bthis evening\b/i, handler: () => new Date() },
+    { pattern: /\bthis afternoon\b/i, handler: () => new Date() },
+    { pattern: /\bthis morning\b/i, handler: () => new Date() },
     { 
       pattern: /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i, 
       handler: (match: string) => getNextWeekday(match) 
@@ -88,16 +92,84 @@ export function parseNaturalLanguageTask(input: string): ParsedTask {
   }
 
   // Extract potential assignee names (capitalized words)
-  const nameMatches = workingText.match(/\b[A-Z][a-z]+\b/g);
-  if (nameMatches && nameMatches.length > 0) {
-    result.assignee = nameMatches[0];
-    workingText = workingText.replace(new RegExp(`\\b${result.assignee}\\b`), '').trim();
+  console.log("Extracting assignee from:", workingText);
+
+  // New: Check for '[Name] you' at the start of the sentence
+  const startNameMatch = workingText.match(/^([A-Z][a-z]+)\s+you\b/i);
+  if (startNameMatch && startNameMatch[1]) {
+    result.assignee = startNameMatch[1];
+    workingText = workingText.replace(/^([A-Z][a-z]+)\s+you\b/i, '').trim();
+  } else {
+    // Special handling for common task verbs that might be capitalized
+    const commonVerbs = ["finish", "complete", "review", "create", "update", "send", "call", "deploy", "check", "write", "take", "take care of"];
+    let verbMatch = null;
+    for (const verb of commonVerbs) {
+      const verbRegex = new RegExp(`\\b${verb}\\b`, 'i');
+      if (workingText.match(verbRegex)) {
+        verbMatch = workingText.match(verbRegex)?.[0];
+        break;
+      }
+    }
+    // List of known companies/organizations that should not be treated as assignees
+    const knownCompanies = [
+      "microsoft", "google", "apple", "amazon", "facebook", "meta", "netflix", "tesla", 
+      "ibm", "oracle", "salesforce", "adobe", "intel", "cisco", "samsung", "sony"
+    ];
+    // Look for specific assignee markers
+    const byMarkerMatch = workingText.match(/\b(by|for|to)\s+([A-Za-z]+)\b/i);
+    if (byMarkerMatch && byMarkerMatch[2]) {
+      const potentialAssignee = byMarkerMatch[2];
+      // Check if it's a company name
+      if (!knownCompanies.includes(potentialAssignee.toLowerCase())) {
+        // Found a name after "by", "for", or "to" that's not a company
+        result.assignee = potentialAssignee.charAt(0).toUpperCase() + potentialAssignee.slice(1).toLowerCase();
+        workingText = workingText.replace(byMarkerMatch[0], '').trim();
+        console.log("Found assignee via marker:", result.assignee);
+      } else {
+        console.log("Found company name, not treating as assignee:", potentialAssignee);
+      }
+    } else {
+      // Try to find capitalized names, but exclude common verbs and companies
+      const nameMatches = workingText.match(/\b[A-Z][a-z]+\b/g);
+      if (nameMatches && nameMatches.length > 0) {
+        // Filter out common verbs and companies from potential names
+        const filteredNames = nameMatches.filter(name => 
+          !commonVerbs.includes(name.toLowerCase()) && 
+          !knownCompanies.includes(name.toLowerCase())
+        );
+        if (filteredNames.length > 0) {
+          result.assignee = filteredNames[0];
+          workingText = workingText.replace(new RegExp(`\\b${result.assignee}\\b`), '').trim();
+          console.log("Found assignee via capitalization:", result.assignee);
+        }
+      }
+      // If no assignee found yet, try common names
+      if (!result.assignee) {
+        const commonNames = ["aman", "sarah", "john", "alex", "david", "michael", "emma", "olivia", "rajeev", "shreya"];
+        for (const name of commonNames) {
+          if (name.toLowerCase() === "finish" && verbMatch && verbMatch.toLowerCase() === "finish") {
+            continue; // Skip "finish" if it's likely a verb
+          }
+          const nameRegex = new RegExp(`\\b${name}\\b`, 'i');
+          const match = workingText.match(nameRegex);
+          if (match) {
+            // Capitalize the first letter for consistency
+            result.assignee = match[0].charAt(0).toUpperCase() + match[0].slice(1).toLowerCase();
+            workingText = workingText.replace(nameRegex, '').trim();
+            console.log("Found assignee via common names:", result.assignee);
+            break;
+          }
+        }
+      }
+    }
   }
 
   // Extract task name (remaining text, cleaned up)
   result.name = workingText
     .replace(/\s+/g, ' ')
     .replace(/^(to\s+)?/i, '')
+    .replace(/^(you\s+)?/i, '')
+    .replace(/^(please\s+)?/i, '')
     .trim();
 
   if (!result.name) {
@@ -212,34 +284,62 @@ export function getPriorityInfo(priority: string) {
   return priorities[priority as keyof typeof priorities] || priorities['P3'];
 }
 
-export function formatDateForDisplay(date: Date | undefined): { date: string; time: string; relative: string } {
+export function formatDateForDisplay(date: Date | string | undefined | null): { date: string; time: string; relative: string } {
   if (!date) return { date: '', time: '', relative: '' };
   
-  const now = new Date();
-  const diffInDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  
-  let relative = '';
-  if (diffInDays === 0) {
-    relative = 'Due today';
-  } else if (diffInDays === 1) {
-    relative = 'Due tomorrow';
-  } else if (diffInDays > 0) {
-    relative = `Due in ${diffInDays} days`;
-  } else {
-    relative = `Overdue by ${Math.abs(diffInDays)} days`;
+  // Ensure we have a proper Date object
+  let dateObj: Date;
+  try {
+    if (date instanceof Date) {
+      dateObj = date;
+    } else if (typeof date === 'string') {
+      dateObj = new Date(date);
+    } else {
+      console.error("Invalid date type:", typeof date);
+      return { date: 'Invalid date', time: '', relative: '' };
+    }
+    
+    // Check if the date is valid
+    if (isNaN(dateObj.getTime())) {
+      console.error("Invalid date (NaN):", date);
+      return { date: 'Invalid date', time: '', relative: '' };
+    }
+  } catch (error) {
+    console.error("Error parsing date:", error, date);
+    return { date: 'Invalid date', time: '', relative: '' };
   }
   
-  return {
-    date: date.toLocaleDateString('en-US', { 
-      month: 'long', 
-      day: 'numeric', 
-      year: 'numeric' 
-    }),
-    time: date.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit',
-      hour12: true 
-    }),
-    relative
-  };
+  const now = new Date();
+  
+  try {
+    const diffInDays = Math.ceil((dateObj.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    let relative = '';
+    if (diffInDays === 0) {
+      relative = 'Due today';
+    } else if (diffInDays === 1) {
+      relative = 'Due tomorrow';
+    } else if (diffInDays > 0) {
+      relative = `Due in ${diffInDays} days`;
+    } else {
+      relative = `Overdue by ${Math.abs(diffInDays)} days`;
+    }
+    
+    return {
+      date: dateObj.toLocaleDateString('en-US', { 
+        month: 'long', 
+        day: 'numeric', 
+        year: 'numeric' 
+      }),
+      time: dateObj.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      }),
+      relative
+    };
+  } catch (error) {
+    console.error("Error calculating date display:", error, dateObj);
+    return { date: 'Error displaying date', time: '', relative: '' };
+  }
 }

@@ -60,3 +60,28 @@ export interface ParsedTask {
   warnings: string[];
   errors: string[];
 }
+
+// Helper function to ensure date objects are properly handled
+export function ensureDate(date: Date | string | null | undefined): Date | undefined {
+  if (!date) return undefined;
+  
+  try {
+    // If it's already a Date object
+    if (date instanceof Date) {
+      return isNaN(date.getTime()) ? undefined : date;
+    }
+    
+    // If it's a string, try to convert it
+    if (typeof date === 'string') {
+      const dateObj = new Date(date);
+      return isNaN(dateObj.getTime()) ? undefined : dateObj;
+    }
+    
+    // If it's neither a Date nor a string
+    console.error("Invalid date type:", typeof date);
+    return undefined;
+  } catch (error) {
+    console.error("Error parsing date:", error, date);
+    return undefined;
+  }
+}
