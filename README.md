@@ -23,7 +23,7 @@ TaskFlow is a smart task manager that uses AI to convert natural language meetin
 
 1. **Clone the repository:**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/hemaharshini18/AI-Meeting-Minutes-to-Task-Converter.git
    cd <repo-folder>
    ```
 
